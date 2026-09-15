@@ -1,5 +1,5 @@
 import { agentLog, listDbUsers, now, read, timeline, write } from "../db";
-import { band, excludedReason, jobKey, normUrl, searchQueries, type Application, type DB, type Job } from "../types";
+import { SOURCES, band, excludedReason, jobKey, normUrl, searchQueries, type Application, type DB, type Job } from "../types";
 import { assistedApply } from "./apply";
 import { draftDocuments, redraft } from "./draft";
 import { fetchPage } from "./fetch";
@@ -258,7 +258,8 @@ export async function runSearch(uid: string) {
   const db0 = read(uid);
   if (!db0.profile.masterCv?.text || !db0.profile.targets.length) throw new Error("Finish your profile in Settings first: upload your CV and add what you are looking for.");
   const p = db0.profile;
-  const enabled = new Set(p.sources.filter((s) => s.enabled).map((s) => s.id));
+  // A source the profile has never seen (added after the profile was saved) is on by default.
+  const enabled = new Set(SOURCES.map((s) => s.id).filter((id) => p.sources.find((s) => s.id === id)?.enabled ?? true));
   write(uid, (db) => {
     db.agent.searchRequested = false;
     db.agent.search = { startedAt: now() };

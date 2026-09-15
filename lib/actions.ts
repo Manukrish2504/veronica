@@ -267,7 +267,7 @@ export async function saveProfile(formData: FormData) {
         note: (all("target_note")[i] ?? "").trim(),
       })).filter((t) => t.roles.length),
       keywords: list("keywords"),
-      locations: list("locations"),
+      locations: str("locations").split(/[\n;]/).map((s) => s.trim()).filter(Boolean),
       remote: formData.get("remote") === "on",
       salaryFloor: { amount: Number(str("salaryAmount")) || 0, currency: str("salaryCurrency") || "AUD" },
       sectors: list("sectors"),

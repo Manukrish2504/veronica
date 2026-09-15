@@ -57,7 +57,7 @@ export default async function SettingsPage() {
   const langs = [...p.languages, { name: "", level: "Professional" }];
   const targets: Target[] = [...p.targets, { kind: "internship", roles: [], startFrom: "", startTo: "", note: "" }];
   const watch = [...p.watchList, { company: "", careersUrl: "" }, { company: "", careersUrl: "" }];
-  const src = (id: string) => p.sources.find((s) => s.id === id)?.enabled ?? false;
+  const src = (id: string) => p.sources.find((s) => s.id === id)?.enabled ?? true;
 
   return (
     <form action={saveProfile} className="max-w-3xl mx-auto px-6 md:px-10 py-8 space-y-8">
@@ -130,7 +130,7 @@ export default async function SettingsPage() {
           <Field label="Keywords" name="keywords" defaultValue={p.keywords.join(", ")} />
           <Field label="Sectors" name="sectors" defaultValue={p.sectors.join(", ")} />
           <div className="grid gap-4 sm:grid-cols-[1fr_auto] items-end">
-            <Field label="Locations" name="locations" defaultValue={p.locations.join(", ")} />
+            <Field label="Locations" name="locations" defaultValue={p.locations.join("; ")} hint="City, country; separate several with semicolons, e.g. Melbourne, AU; Sydney, AU" />
             <label className="flex h-9 items-center gap-3 text-[0.8125rem]"><Switch name="remote" defaultChecked={p.remote} />Remote is fine</label>
           </div>
           <div className="grid gap-4 sm:grid-cols-[1fr_140px]">
