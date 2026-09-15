@@ -39,3 +39,6 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# veronica: personal data (CVs, postings, drafts, accounts) never leaves the machine
+/data/

@@ -1,36 +1,35 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Veronica
 
-## Getting Started
+A personal job-search agent with a real UI, modelled on [MadsLorentzen/ai-job-search](https://github.com/MadsLorentzen/ai-job-search): it finds postings, scores them against your CV with the same evaluation framework (eligibility and language gates, technical 30 / experience 25 / culture 15 / career 30), drafts a tailored CV and cover letter through a drafter → reviewer → revision loop with a factual grounding audit, fills application forms in a browser for you to submit, and builds interview prep. Nothing is sent to an employer without you.
 
-First, run the development server:
+Each person creates their own account. Data is one JSON file per user under `data/` and never leaves the machine.
+
+## Run it
+
+Requirements: Node 22+, Google Chrome installed, and a Claude subscription signed in through Claude Code (`npm i -g @anthropic-ai/claude-code`, then run `claude` once and log in).
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev          # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Create an account on the login screen, then in **Settings**: upload your CV (PDF), optionally your LinkedIn profile export, fill in work rights and availability, and add what you are looking for under **Looking for**. The agent searches on the schedule you pick, or press **Run search** on the Inbox.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Copy `.env.example` to `.env.local` to change the model, use an API key instead of the Claude login, or move the data directory.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## How it works
 
-## Learn More
+- **Sources**: LinkedIn (public search), Seek, a Claude web search across Indeed, Glassdoor, GradConnection, Prosple and employer sites, and a company watch list whose Greenhouse, Lever, Ashby or Workday boards are read directly.
+- **Scoring**: one structured Claude call per posting with the reference rubric. Postings that fail a gate, need relocation or hit a deal-breaker are excluded but stay visible under the inbox and in Pipeline › Closed, with the quoted reason; you can include any of them.
+- **Drafting**: shortlist a posting and the agent writes both documents from your master CV (structure preserved), a reviewer researches the company and audits every claim, then a revision applies the feedback. You approve, edit or request changes.
+- **Applying**: after both documents are approved, a separate Chrome window opens on the posting, the agent fills the form and uploads the PDFs, then stops before Submit. Log in to a site once in that window and it stays logged in.
+- **Interview prep**: set a status to Interview for research, STAR stories, likely questions and a mock interview.
 
-To learn more about Next.js, take a look at the following resources:
+## Develop
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm test             # pipeline tests against a fake model
+npx tsc --noEmit
+npm run lint
+npm run build
+```
