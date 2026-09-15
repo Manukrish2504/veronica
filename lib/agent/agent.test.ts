@@ -122,6 +122,18 @@ test("target helpers build search phrases and prompt text", async () => {
   assert.match(targetsText(p), /1\. Internship: AI Engineer, Software Engineer — starting Nov 2026 to Feb 2027 \(summer\)/);
 });
 
+test("GradConnection cards parse into candidates", async () => {
+  const { parseGradconnection } = await import("./sources.ts");
+  const html = `<a class="box-header-title" title="View 2026/27 EY Vacationer Program &amp; Tech" href="/employers/ey/jobs/ey-vac-2/" data-discover="true"><div class="box-employer-name"><p class="box-header-para">EY</p></div>
+  <a class="box-header-title" title="View Software Intern" href="/employers/acme/jobs/acme-intern/"><p class="box-header-para">Acme</p>`;
+  const c = parseGradconnection(html, "internships", "melbourne");
+  assert.equal(c.length, 2);
+  assert.equal(c[0].title, "2026/27 EY Vacationer Program & Tech");
+  assert.equal(c[0].company, "EY");
+  assert.equal(c[0].url, "https://au.gradconnection.com/employers/ey/jobs/ey-vac-2/");
+  assert.equal(c[1].company, "Acme");
+});
+
 test("schedule and dedupe helpers", async () => {
   const { normUrl, jobKey } = await import("../types.ts");
   assert.equal(normUrl("https://www.linkedin.com/jobs/view/graduate-ai-engineer-at-acme-4455645312?refId=x"), "linkedin.com/jobs/view/4455645312");

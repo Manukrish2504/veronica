@@ -276,15 +276,40 @@ export async function runSearch(uid: string) {
     if (p.remote && locs[0]) await attempt(`LinkedIn · ${role} · remote`, () => sources.linkedin(role, country(locs[0]), 14, true));
   }
   if (enabled.has("seek")) for (const role of roles) for (const loc of locs) await attempt(`Seek · ${role} · ${city(loc)}`, () => sources.seek(role, city(loc)));
-  if (enabled.has("careers")) for (const w of p.watchList.filter((x) => x.careersUrl)) await attempt(`Careers · ${w.company}`, async () => (await sources.careersPage(w, p)).filter((c) => sources.titleMatches(c.title, p) && sources.locationMatches(c.location, p)).slice(0, 40));
-  if (enabled.has("websearch")) await attempt("Web search", () => sources.webSearch(p));
+  if (enabled.has("jora")) for (const role of roles.slice(0, 4)) for (const loc of locs) await attempt(`Jora · ${role} · ${city(loc)}`, () => sources.jora(role, city(loc)));
+  if (enabled.has("employmenthero")) for (const role of roles.slice(0, 4)) for (const loc of locs) await attempt(`Employment Hero · ${role} · ${city(loc)}`, () => sources.employmentHero(role, city(loc)));
+  if (enabled.has("gradconnection")) await attempt("GradConnection", () => sources.gradconnection(p));
+  if (enabled.has("remotive") && p.remote) for (const role of roles.slice(0, 3)) await attempt(`Remotive · ${role}`, async () => (await sources.remotive(role)).filter((c) => sources.titleMatches(c.title, p)));
+  if (enabled.has("adzuna")) { if (sources.adzunaConfigured()) { for (const role of roles.slice(0, 4)) for (const loc of locs) await attempt(`Adzuna · ${role} · ${city(loc)}`, () => sources.adzuna(role, city(loc))); } else log(uid, "Adzuna: skipped, add ADZUNA_APP_ID and ADZUNA_APP_KEY to .env.local"); }
+  const boardFilter = (cs: Candidate[]) => cs.filter((c) => sources.titleMatches(c.title, p) && sources.locationMatches(c.location, p)).slice(0, 40);
+  if (enabled.has("careers")) for (const w of p.watchList.filter((x) => x.careersUrl)) await attempt(`Careers · ${w.company}`, async () => boardFilter(await sources.careersPage(w, p)));
+  if (enabled.has("discover")) {
+    await attempt("Discover companies", async () => {
+      const known = [...p.watchList.map((w) => w.company), ...(p.discovered ?? []).map((d) => d.company)];
+      const found = await sources.discoverCompanies(p, known);
+      write(uid, (db) => {
+        const list = db.profile.discovered ?? [];
+        for (const f of found) if (!list.some((d) => d.company.toLowerCase() === f.company.toLowerCase())) list.push({ ...f, at: now() });
+        db.profile.discovered = list.slice(-300);
+      });
+      log(uid, `Discovered ${found.length} new companies (${(read(uid).profile.discovered ?? []).length} in the index)`);
+      return [];
+    });
+    // Read the 15 stalest discovered career pages this run; the rest wait for later runs.
+    const due = [...(read(uid).profile.discovered ?? [])].sort((a, b) => (a.checkedAt ?? "").localeCompare(b.checkedAt ?? "")).slice(0, 15);
+    for (const d of due) {
+      await attempt(`Index · ${d.company}`, async () => boardFilter(await sources.careersPage(d, p)));
+      write(uid, (db) => { const x = db.profile.discovered?.find((y) => y.company === d.company); if (x) x.checkedAt = now(); });
+    }
+  }
+  if (enabled.has("websearch")) await attempt("Web search (5 sweeps)", () => sources.webSearch(p));
 
   const known = new Set(db0.jobs.map((j) => normUrl(j.url)));
   const knownKeys = new Set(db0.jobs.map((j) => jobKey(j.company, j.title)));
   const seen = new Set<string>();
   const cutoff = new Date(Date.now() - 14 * 86_400_000).toISOString().slice(0, 10);
   const fresh = pool.filter((c) => {
-    const u = normUrl(c.url), k = jobKey(c.company, c.title);
+    const u = normUrl(c.url), k = c.company && c.company !== "Unknown" ? jobKey(c.company, c.title) : `url:${u}`;
     if (!c.url || seen.has(u) || seen.has(k) || known.has(u) || knownKeys.has(k)) return false;
     if (c.postedAt && c.postedAt.slice(0, 10) < cutoff) return false;
     seen.add(u); seen.add(k);
@@ -294,7 +319,7 @@ export async function runSearch(uid: string) {
   let keep = fresh;
   if (fresh.length) {
     const idx = await triage(fresh.map((c) => ({ title: c.title, company: c.company, location: c.location, snippet: c.snippet })), p);
-    keep = idx.map((i) => fresh[i]).slice(0, 30);
+    keep = idx.map((i) => fresh[i]).slice(0, 40);
     log(uid, `Triage kept ${keep.length} of ${fresh.length} to fetch and score`);
   }
   let created = 0, done = 0;

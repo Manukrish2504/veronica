@@ -1,4 +1,6 @@
-export type Source = "linkedin" | "seek" | "websearch" | "careers" | "greenhouse" | "lever" | "ashby" | "workday" | "manual";
+export type Source =
+  | "linkedin" | "seek" | "jora" | "employmenthero" | "gradconnection" | "remotive" | "adzuna" | "websearch" | "careers" | "discover"
+  | "greenhouse" | "lever" | "ashby" | "workday" | "workable" | "smartrecruiters" | "bamboohr" | "recruitee" | "rippling" | "manual";
 
 export type Status =
   | "found" | "shortlisted" | "drafting" | "review" | "applying"
@@ -127,8 +129,14 @@ export interface Draft {
 export const SOURCES: { id: Source; label: string; hint: string }[] = [
   { id: "linkedin", label: "LinkedIn", hint: "Public job search, no login needed" },
   { id: "seek", label: "Seek", hint: "seek.com.au search" },
-  { id: "websearch", label: "Web search", hint: "Indeed, Glassdoor, GradConnection, Prosple and employer sites, found with Claude web search" },
-  { id: "careers", label: "Company watch list", hint: "Career pages below and their Greenhouse, Lever, Ashby or Workday boards" },
+  { id: "jora", label: "Jora", hint: "au.jora.com aggregator (many employer sites and boards)" },
+  { id: "employmenthero", label: "Employment Hero Jobs", hint: "employmenthero.com/jobs, mostly Australian SMEs and startups" },
+  { id: "gradconnection", label: "GradConnection", hint: "Graduate programs and internships by field and city" },
+  { id: "remotive", label: "Remotive", hint: "Remote software roles open to Australia or worldwide (only when remote is fine)" },
+  { id: "adzuna", label: "Adzuna", hint: "Aggregator API; needs ADZUNA_APP_ID and ADZUNA_APP_KEY in .env.local (free at developer.adzuna.com)" },
+  { id: "websearch", label: "Web search", hint: "Five Claude web-search sweeps every run: Indeed, Glassdoor, CareerOne and the like; GradConnection and Prosple; every major ATS board; large employers and Fortune 500 with Australian offices; startups and scale-ups" },
+  { id: "careers", label: "Company watch list", hint: "Career pages below, read directly through their Greenhouse, Lever, Ashby, Workday, Workable, SmartRecruiters, BambooHR, Recruitee or Rippling boards" },
+  { id: "discover", label: "Discover companies", hint: "Each run asks Claude for more companies hiring for your targets and adds their career pages to a growing index that is read on later runs" },
 ];
 
 export interface Profile {
@@ -155,6 +163,8 @@ export interface Profile {
   dealBreakers: string[];
   sources: { id: Source; enabled: boolean }[];
   watchList: { company: string; careersUrl: string }[];
+  /** Companies found by the discovery sweep; read round-robin, stalest first. */
+  discovered?: { company: string; careersUrl: string; at: string; checkedAt?: string }[];
   schedule: "hourly" | "daily" | "weekly" | "manual";
 }
 

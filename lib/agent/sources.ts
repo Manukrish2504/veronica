@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { decode, extractLinks, fetchPage, get, getJson, htmlToText, renderPage } from "./fetch";
+import { decode, extractLinks, fetchPage, get, getJson, htmlToText, renderExtract, renderPage } from "./fetch";
 import { structured, TRUST } from "./llm";
 import { targetRoles, targetsText, type Profile, type Source } from "../types";
 
@@ -121,7 +121,7 @@ export async function workday(host: string, tenant: string, site: string, compan
   }));
 }
 
-export type Ats = { kind: "greenhouse" | "lever" | "ashby"; slug: string } | { kind: "workday"; host: string; tenant: string; site: string };
+export type Ats = { kind: "greenhouse" | "lever" | "ashby" | "workable" | "smartrecruiters" | "bamboohr" | "recruitee" | "rippling"; slug: string } | { kind: "workday"; host: string; tenant: string; site: string };
 
 /** Recognise an ATS board from a URL. */
 export function detectAts(url: string): Ats | undefined {
@@ -131,6 +131,11 @@ export function detectAts(url: string): Ats | undefined {
   if ((x = m(/jobs\.lever\.co\/([\w-]+)/))) return { kind: "lever", slug: x[1] };
   if ((x = m(/jobs\.ashbyhq\.com\/([\w-]+)/))) return { kind: "ashby", slug: x[1] };
   if ((x = m(/https?:\/\/(([\w-]+)\.wd\d+\.myworkdayjobs\.com)\/(?:[a-z]{2}-[A-Z]{2}\/)?([\w-]+)/))) return { kind: "workday", host: x[1], tenant: x[2], site: x[3] };
+  if ((x = m(/apply\.workable\.com\/([\w-]+)/) ?? m(/https?:\/\/([\w-]+)\.workable\.com/))) return { kind: "workable", slug: x[1] };
+  if ((x = m(/(?:jobs|careers)\.smartrecruiters\.com\/([\w-]+)/))) return { kind: "smartrecruiters", slug: x[1] };
+  if ((x = m(/https?:\/\/([\w-]+)\.bamboohr\.com\/careers/))) return { kind: "bamboohr", slug: x[1] };
+  if ((x = m(/https?:\/\/([\w-]+)\.recruitee\.com/))) return { kind: "recruitee", slug: x[1] };
+  if ((x = m(/ats\.rippling\.com\/([\w-]+)/))) return { kind: "rippling", slug: x[1] };
   return undefined;
 }
 
@@ -140,6 +145,11 @@ export function atsBoard(ats: Ats, company: string, searchText: string): Promise
     case "lever": return lever(ats.slug, company);
     case "ashby": return ashby(ats.slug, company);
     case "workday": return workday(ats.host, ats.tenant, ats.site, company, searchText);
+    case "workable": return workable(ats.slug, company);
+    case "smartrecruiters": return smartrecruiters(ats.slug, company);
+    case "bamboohr": return bamboohr(ats.slug, company);
+    case "recruitee": return recruitee(ats.slug, company);
+    case "rippling": return rippling(ats.slug, company);
   }
 }
 
@@ -167,13 +177,30 @@ export async function careersPage(entry: { company: string; careersUrl: string }
 
 const WebPostings = z.object({ postings: z.array(z.object({ title: z.string(), company: z.string(), url: z.string(), location: z.string(), site: z.string() })) });
 
+const SWEEPS = [
+  "the big aggregators: Indeed, Glassdoor, CareerOne, Jobs.com.au, Adzuna, Jora, Workforce Australia",
+  "student and graduate boards: GradConnection, Prosple, GradAustralia, university career hubs, the Australian Computer Society and industry association boards",
+  "applicant tracking boards on any company's site: boards.greenhouse.io and job-boards.greenhouse.io, jobs.lever.co, jobs.ashbyhq.com, myworkdayjobs.com, apply.workable.com, jobs.smartrecruiters.com, bamboohr.com/careers, recruitee.com, ats.rippling.com, teamtailor, jobvite, icims, taleo, successfactors",
+  "large employers and Fortune 500 companies with offices in the candidate's area, on their own careers sites: consultancies, banks, telcos, retailers, tech companies, government agencies",
+  "startups and scale-ups: Wellfound (AngelList), Y Combinator's Work at a Startup, Startmate, venture-portfolio job boards (Blackbird, Square Peg, AirTree, Cut Through Venture), Hatch, and startup career pages",
+];
+
+/** Five targeted Claude web-search sweeps, three at a time. */
 export async function webSearch(profile: Profile): Promise<Candidate[]> {
+  const out: Candidate[] = [];
+  let i = 0;
+  await Promise.all(Array.from({ length: 3 }, async () => { while (i < SWEEPS.length) { const s = SWEEPS[i++]; try { out.push(...(await webSweep(profile, s))); } catch {} } }));
+  const seen = new Set<string>();
+  return out.filter((c) => { const k = c.url.split("?")[0]; if (seen.has(k)) return false; seen.add(k); return true; });
+}
+
+async function webSweep(profile: Profile, family: string): Promise<Candidate[]> {
   const where = [...profile.locations, ...(profile.remote ? ["remote within Australia"] : [])].join(" or ");
   const { postings } = await structured(
     WebPostings,
-    `You find current job postings for a candidate. ${TRUST} Use web search. Only return postings whose URL you actually saw in search results and that point at one specific job (never a search or listing page). Prefer Indeed, Glassdoor, GradConnection, Prosple, Jora, employer career sites and ATS boards (Greenhouse, Lever, Ashby, Workday). Skip LinkedIn and Seek (covered elsewhere). Posted within the last 14 days where the result shows a date.`,
+    `You find current job postings for a candidate. ${TRUST} Use web search. Only return postings whose URL you actually saw in search results and that point at one specific job (never a search or listing page). This sweep covers ${family}. Skip LinkedIn and Seek (covered elsewhere). Posted within the last 14 days where the result shows a date.`,
     `Looking for (only these kinds of jobs):\n${targetsText(profile)}\nKeywords: ${profile.keywords.join(", ")}\nLocation: ${where}\n\nReturn up to 15 postings.`,
-    { webSearches: 8, near: profile.locations[0]?.split(",")[0], maxTokens: 3000 },
+    { webSearches: 6, near: profile.locations[0]?.split(",")[0], maxTokens: 3000 },
   );
   return postings.map((p) => {
     let site = p.site;
@@ -200,3 +227,138 @@ export function locationMatches(location: string | undefined, profile: Profile):
 }
 const COUNTRY_NAME: Record<string, string> = { au: "australia", us: "united states", gb: "united kingdom", uk: "united kingdom", nz: "new zealand", in: "india", ca: "canada", de: "germany", sg: "singapore" };
 const STOP = new Set(["and", "the", "for", "with", "junior", "graduate", "intern", "internship", "entry", "level"]);
+
+// ---------- GradConnection (server-rendered listings by kind, field and city) ----------
+
+const GC_FIELDS = ["computer-science", "engineering-software", "data-science-and-analytics", "information-technology"];
+
+export function parseGradconnection(html: string, kind: string, city: string): Candidate[] {
+  const out: Candidate[] = [];
+  const re = /class="box-header-title"[^>]*title="View ([^"]+)"[^>]*href="([^"]+)"[\s\S]*?class="box-header-para">([^<]*)</g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html))) {
+    const url = new URL(decode(m[2]), "https://au.gradconnection.com").toString();
+    out.push({ source: "gradconnection", sourceLabel: "GradConnection", url, title: decode(m[1]).trim(), company: decode(m[3]).trim() || "Unknown", location: city, snippet: kind, detail: async () => { const pg = await fetchPage(url); return pg.text.length > 300 ? pg.text : undefined; } });
+  }
+  return out;
+}
+
+export async function gradconnection(profile: Profile): Promise<Candidate[]> {
+  const kinds = new Set(profile.targets.map((t) => (t.kind === "internship" ? "internships" : "graduate-jobs")));
+  const cities = profile.locations.map((l) => l.split(",")[0].trim().toLowerCase().replace(/\s+/g, "-")).filter(Boolean);
+  const out: Candidate[] = [];
+  for (const kind of kinds) for (const city of cities) for (const field of GC_FIELDS) {
+    const r = await get(`https://au.gradconnection.com/${kind}/${field}/${city}/`);
+    if (!r.ok) continue;
+    out.push(...parseGradconnection(await r.text(), kind, city.replace(/-/g, " ")));
+  }
+  return out;
+}
+
+// ---------- Jora (rendered search page) ----------
+
+export async function jora(query: string, where: string): Promise<Candidate[]> {
+  const p = new URLSearchParams({ q: query, l: where, sp: "search", st: "date" });
+  const pg = await renderPage(`https://au.jora.com/j?${p}`);
+  const out: Candidate[] = [];
+  for (const chunk of pg.html.split(/class="job-card/).slice(1)) {
+    const link = chunk.match(/<a[^>]*class="[^"]*job-link[^"]*"[^>]*href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/i);
+    if (!link) continue;
+    const url = new URL(decode(link[1]).split("?")[0], "https://au.jora.com").toString();
+    const company = clean(chunk.match(/class="[^"]*job-company[^"]*"[^>]*>([\s\S]*?)<\//i)?.[1] ?? "");
+    const location = clean(chunk.match(/class="[^"]*job-location[^"]*"[^>]*>([\s\S]*?)<\//i)?.[1] ?? "");
+    out.push({ source: "jora", sourceLabel: "Jora", url, title: clean(link[2]), company: company || "Unknown", location: location || where, detail: async () => { const j = await renderPage(url); return j.text.length > 300 ? j.text : undefined; } });
+  }
+  return out;
+}
+
+// ---------- Employment Hero Jobs (results render client-side) ----------
+
+const EH_CARDS = `() => Array.from(document.querySelectorAll('a[href*="/jobs/position/"]')).map((a) => ({ href: a.href, lines: (a.innerText || "").split("\\n").map((s) => s.trim()).filter(Boolean) }))`;
+
+export async function employmentHero(query: string, where: string): Promise<Candidate[]> {
+  const p = new URLSearchParams({ query, location: where });
+  const cards = await renderExtract<{ href: string; lines: string[] }[]>(`https://employmenthero.com/jobs/?${p}`, EH_CARDS, 4500);
+  const seen = new Set<string>();
+  const out: Candidate[] = [];
+  for (const c of cards) {
+    const url = c.href.split("?")[0];
+    if (seen.has(url) || c.lines.length < 2) continue;
+    seen.add(url);
+    out.push({ source: "employmenthero", sourceLabel: "Employment Hero", url, title: c.lines[0], company: c.lines[1] ?? "Unknown", location: c.lines[2] ?? where, snippet: c.lines.slice(3).join(" · "), detail: async () => { const pg = await fetchPage(url); return pg.ld?.description ?? (pg.text.length > 300 ? pg.text : undefined); } });
+  }
+  return out;
+}
+
+// ---------- Remotive (remote software roles) ----------
+
+export async function remotive(query: string): Promise<Candidate[]> {
+  const j = await getJson<{ jobs: { title: string; company_name: string; url: string; candidate_required_location?: string; publication_date?: string; description?: string }[] }>(`https://remotive.com/api/remote-jobs?category=software-dev&search=${encodeURIComponent(query)}&limit=60`);
+  return j.jobs
+    .filter((x) => /australia|worldwide|anywhere|apac|oceania|asia/i.test(x.candidate_required_location ?? ""))
+    .map((x) => ({ source: "remotive" as const, sourceLabel: "Remotive", url: x.url, title: x.title, company: x.company_name, location: `Remote (${x.candidate_required_location})`, remote: true, postedAt: x.publication_date?.slice(0, 10), text: x.description ? htmlToText(x.description) : undefined }));
+}
+
+// ---------- Adzuna (needs free API keys) ----------
+
+export const adzunaConfigured = () => Boolean(process.env.ADZUNA_APP_ID && process.env.ADZUNA_APP_KEY);
+
+export async function adzuna(what: string, where: string): Promise<Candidate[]> {
+  const p = new URLSearchParams({ app_id: process.env.ADZUNA_APP_ID ?? "", app_key: process.env.ADZUNA_APP_KEY ?? "", results_per_page: "30", what, where, max_days_old: "14", sort_by: "date", "content-type": "application/json" });
+  const j = await getJson<{ results: { title: string; redirect_url: string; company?: { display_name?: string }; location?: { display_name?: string }; created?: string; description?: string }[] }>(`https://api.adzuna.com/v1/api/jobs/au/search/1?${p}`);
+  return j.results.map((x) => ({ source: "adzuna" as const, sourceLabel: "Adzuna", url: x.redirect_url, title: x.title, company: x.company?.display_name ?? "Unknown", location: x.location?.display_name ?? where, postedAt: x.created?.slice(0, 10), snippet: x.description, detail: async () => { const pg = await fetchPage(x.redirect_url); return pg.ld?.description ?? (pg.text.length > 300 ? pg.text : undefined); } }));
+}
+
+// ---------- More ATS boards for the company index ----------
+
+export async function workable(slug: string, company: string): Promise<Candidate[]> {
+  const r = await get(`https://apply.workable.com/api/v3/accounts/${slug}/jobs`, { method: "POST", headers: { "Content-Type": "application/json", Accept: "application/json" }, body: JSON.stringify({ query: "", location: [], department: [], worktype: [], remote: [] }) });
+  if (!r.ok) throw new Error(`${r.status} for workable/${slug}`);
+  const j = (await r.json()) as { results?: { title: string; shortcode: string; published?: string; location?: { city?: string; country?: string; workplaceType?: string } }[] };
+  return (j.results ?? []).map((x) => ({
+    source: "workable" as const, sourceLabel: `Workable · ${company}`, url: `https://apply.workable.com/${slug}/j/${x.shortcode}/`, title: x.title, company, location: [x.location?.city, x.location?.country].filter(Boolean).join(", "), remote: x.location?.workplaceType === "remote", postedAt: x.published?.slice(0, 10),
+    detail: async () => { const d = await getJson<{ description?: string; requirements?: string; benefits?: string }>(`https://apply.workable.com/api/v2/accounts/${slug}/jobs/${x.shortcode}`); const t = [d.description, d.requirements, d.benefits].filter(Boolean).map((h) => htmlToText(h!)).join("\n\n"); return t.length > 200 ? `Title: ${x.title}\nCompany: ${company}\n\n${t}` : undefined; },
+  }));
+}
+
+export async function smartrecruiters(slug: string, company: string): Promise<Candidate[]> {
+  const j = await getJson<{ content: { id: string; name: string; releasedDate?: string; location?: { city?: string; region?: string; country?: string; remote?: boolean } }[] }>(`https://api.smartrecruiters.com/v1/companies/${slug}/postings?limit=100`);
+  return j.content.map((x) => ({
+    source: "smartrecruiters" as const, sourceLabel: `SmartRecruiters · ${company}`, url: `https://jobs.smartrecruiters.com/${slug}/${x.id}`, title: x.name, company, location: [x.location?.city, x.location?.region, x.location?.country].filter(Boolean).join(", "), remote: x.location?.remote, postedAt: x.releasedDate?.slice(0, 10),
+    detail: async () => { const d = await getJson<{ jobAd?: { sections?: Record<string, { text?: string }> } }>(`https://api.smartrecruiters.com/v1/companies/${slug}/postings/${x.id}`); const t = Object.values(d.jobAd?.sections ?? {}).map((s) => s.text).filter(Boolean).map((h) => htmlToText(h!)).join("\n\n"); return t.length > 200 ? `Title: ${x.name}\nCompany: ${company}\n\n${t}` : undefined; },
+  }));
+}
+
+export async function bamboohr(slug: string, company: string): Promise<Candidate[]> {
+  const j = await getJson<{ result: { id: string | number; jobOpeningName: string; location?: { city?: string; state?: string }; employmentStatusLabel?: string }[] }>(`https://${slug}.bamboohr.com/careers/list`);
+  return j.result.map((x) => ({
+    source: "bamboohr" as const, sourceLabel: `BambooHR · ${company}`, url: `https://${slug}.bamboohr.com/careers/${x.id}`, title: x.jobOpeningName, company, location: [x.location?.city, x.location?.state].filter(Boolean).join(", "), snippet: x.employmentStatusLabel,
+    detail: async () => { const d = await getJson<{ result?: { jobOpening?: { description?: string } } }>(`https://${slug}.bamboohr.com/careers/${x.id}/detail`); const t = d.result?.jobOpening?.description ? htmlToText(d.result.jobOpening.description) : ""; return t.length > 200 ? `Title: ${x.jobOpeningName}\nCompany: ${company}\n\n${t}` : undefined; },
+  }));
+}
+
+export async function recruitee(slug: string, company: string): Promise<Candidate[]> {
+  const j = await getJson<{ offers: { title: string; careers_url: string; location?: string; description?: string; requirements?: string; published_at?: string; status?: string }[] }>(`https://${slug}.recruitee.com/api/offers/`);
+  return j.offers.filter((x) => !x.status || x.status === "published").map((x) => ({ source: "recruitee" as const, sourceLabel: `Recruitee · ${company}`, url: x.careers_url, title: x.title, company, location: x.location ?? "", postedAt: x.published_at?.slice(0, 10), text: [x.description, x.requirements].filter(Boolean).map((h) => htmlToText(h!)).join("\n\n") || undefined }));
+}
+
+export async function rippling(slug: string, company: string): Promise<Candidate[]> {
+  const j = await getJson<{ uuid: string; name: string; url: string; workLocation?: { label?: string } }[]>(`https://api.rippling.com/platform/api/ats/v1/board/${slug}/jobs`);
+  return j.map((x) => ({ source: "rippling" as const, sourceLabel: `Rippling · ${company}`, url: x.url, title: x.name, company, location: x.workLocation?.label ?? "", detail: async () => { try { const d = await getJson<{ description?: string }>(`https://api.rippling.com/platform/api/ats/v1/board/${slug}/jobs/${x.uuid}`); if (d.description) return `Title: ${x.name}\nCompany: ${company}\n\n${htmlToText(d.description)}`; } catch {} const pg = await fetchPage(x.url); return pg.text.length > 300 ? pg.text : undefined; } }));
+}
+
+// ---------- Company discovery: grow the index every run ----------
+
+const Companies = z.object({ companies: z.array(z.object({ company: z.string(), careersUrl: z.string().describe("The company's own careers page or its ATS board URL"), why: z.string() })) });
+
+export async function discoverCompanies(profile: Profile, known: string[]): Promise<{ company: string; careersUrl: string }[]> {
+  const where = [...profile.locations, ...(profile.remote ? ["remote within Australia"] : [])].join(" or ");
+  const { companies } = await structured(
+    Companies,
+    `You build a list of employers worth watching for a candidate. ${TRUST} Use web search. Mix startups, scale-ups, mid-size firms and large or Fortune 500 companies with offices where the candidate is. Only return companies you found evidence are hiring, or regularly hire, for the candidate's targets, and give each one's real careers page or ATS board URL (Greenhouse, Lever, Ashby, Workday, Workable, SmartRecruiters and the like are ideal). Skip companies in the already-known list.`,
+    `Looking for:\n${targetsText(profile)}\nKeywords: ${profile.keywords.join(", ")}\nSectors: ${profile.sectors.join(", ") || "any"}\nLocation: ${where}\n\nAlready known (skip): ${known.slice(0, 200).join("; ") || "none"}\n\nReturn up to 25 companies.`,
+    { webSearches: 8, near: profile.locations[0]?.split(",")[0], maxTokens: 3000 },
+  );
+  const seen = new Set(known.map((k) => k.toLowerCase()));
+  return companies.filter((c) => /^https?:\/\//.test(c.careersUrl) && !seen.has(c.company.toLowerCase())).map((c) => ({ company: c.company.trim(), careersUrl: c.careersUrl.trim() }));
+}

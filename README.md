@@ -19,7 +19,7 @@ Copy `.env.example` to `.env.local` to change the model, use an API key instead 
 
 ## How it works
 
-- **Sources**: LinkedIn (public search), Seek, a Claude web search across Indeed, Glassdoor, GradConnection, Prosple and employer sites, and a company watch list whose Greenhouse, Lever, Ashby or Workday boards are read directly.
+- **Sources**: LinkedIn (public search), Seek, Jora, Employment Hero Jobs, GradConnection, Remotive (remote roles), Adzuna (with free API keys), five Claude web-search sweeps per run (aggregators such as Indeed and Glassdoor; graduate boards such as GradConnection and Prosple; every major ATS board; large employers and Fortune 500 career sites; startups and scale-ups), a company watch list, and a discovery step that keeps adding companies hiring for your targets to an index that is read round-robin. Watch-list and discovered career pages are read directly through Greenhouse, Lever, Ashby, Workday, Workable, SmartRecruiters, BambooHR, Recruitee or Rippling.
 - **Scoring**: one structured Claude call per posting with the reference rubric. Postings that fail a gate, need relocation or hit a deal-breaker are excluded but stay visible under the inbox and in Pipeline › Closed, with the quoted reason; you can include any of them.
 - **Drafting**: shortlist a posting and the agent writes both documents from your master CV (structure preserved), a reviewer researches the company and audits every claim, then a revision applies the feedback. You approve, edit or request changes.
 - **Applying**: after both documents are approved, a separate Chrome window opens on the posting, the agent fills the form and uploads the PDFs, then stops before Submit. Log in to a site once in that window and it stays logged in.

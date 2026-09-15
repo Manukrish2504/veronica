@@ -128,6 +128,19 @@ export function headless(): Promise<Browser> {
   return globalThis.__vxHeadless;
 }
 
+/** Render a page and run a JS expression in it (a function source, invoked as an IIFE). */
+export async function renderExtract<T>(url: string, script: string, waitMs = 2500): Promise<T> {
+  const browser = await headless();
+  const page = await browser.newPage({ userAgent: UA, locale: "en-AU" });
+  try {
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30_000 });
+    await page.waitForTimeout(waitMs);
+    return (await page.evaluate(`(${script})()`)) as T;
+  } finally {
+    await page.close();
+  }
+}
+
 export async function renderPage(url: string, selector?: string): Promise<Page> {
   const browser = await headless();
   const page = await browser.newPage({ userAgent: UA, locale: "en-AU" });

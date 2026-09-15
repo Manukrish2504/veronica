@@ -12,7 +12,7 @@ import { DRAFT_MODEL, MODEL, PROVIDER, authStatus, hasKey } from "@/lib/agent/ll
 const LEVELS = ["Native", "Fluent", "Professional", "Conversational", "Basic"];
 const SCHEDULES = [["hourly", "Every hour"], ["daily", "Daily at 09:00"], ["weekly", "Weekly"], ["manual", "Only when I ask"]] as const;
 const KINDS = Object.entries(TARGET_LABEL) as [TargetKind, string][];
-const SOURCE_ICON: Record<string, string> = { linkedin: "group", seek: "search", websearch: "language", careers: "corporate_fare" };
+const SOURCE_ICON: Record<string, string> = { linkedin: "group", seek: "search", jora: "manage_search", employmenthero: "storefront", gradconnection: "school", remotive: "public", adzuna: "api", websearch: "language", careers: "corporate_fare", discover: "travel_explore" };
 
 const input = "h-9 w-full rounded-full border border-outline-variant bg-card px-4 text-[0.8125rem] outline-none focus:border-primary/40 placeholder:text-muted-foreground";
 const area = "w-full rounded-xl border border-outline-variant bg-card px-3 py-2 text-[0.8125rem] outline-none focus:border-primary/40 placeholder:text-muted-foreground";
@@ -174,7 +174,7 @@ export default async function SettingsPage() {
                 <input name="watch_url" defaultValue={w.careersUrl} placeholder="https://company.com/careers" className={`${input} font-mono`} />
               </div>
             ))}
-            <span className="block text-[0.6875rem] text-muted-foreground">The agent checks these career pages (and their Greenhouse, Lever, Ashby or Workday boards) every run.</span>
+            <span className="block text-[0.6875rem] text-muted-foreground">The agent checks these career pages (and their Greenhouse, Lever, Ashby, Workday, Workable, SmartRecruiters, BambooHR, Recruitee or Rippling boards) every run.{p.discovered?.length ? ` Discovery has added ${p.discovered.length} more companies to the index; 15 are read each run.` : ""}</span>
           </div>
           <label className="block space-y-1.5">
             <span className="text-[0.75rem] font-medium text-muted-foreground">Schedule</span>
