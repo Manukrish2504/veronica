@@ -145,6 +145,10 @@ export interface Profile {
   phone: string;
   linkedin: string;
   website: string;
+  /** GitHub login, used to tell the candidate's own commits apart in repository facts. */
+  github?: string;
+  /** Repository URLs of projects to draw on when drafting. */
+  repos?: string[];
   masterCv?: { fileName: string; text: string; uploadedAt: string };
   /** LinkedIn profile export: a second source for skills, certifications, languages and awards (never for roles or employers). */
   linkedinProfile?: { fileName: string; text: string; uploadedAt: string };
@@ -218,7 +222,8 @@ export const targetRoles = (p: Profile) => uniq(p.targets.flatMap((t) => t.roles
 export function searchQueries(p: Profile): string[] {
   return uniq(p.targets.flatMap((t) => t.roles.map((r) => (t.kind === "internship" ? `${r} intern` : t.kind === "graduate" ? `graduate ${r}` : t.kind === "parttime" ? `${r} part time` : r))));
 }
-const month = (ym: string) => { const [y, m] = ym.split("-").map(Number); return y && m ? new Date(y, m - 1, 1).toLocaleString("en-AU", { month: "short", year: "numeric" }) : ym || "?"; };
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const month = (ym: string) => { const [y, m] = ym.split("-").map(Number); return y && m && m >= 1 && m <= 12 ? `${MONTHS[m - 1]} ${y}` : ym || "?"; };
 /** The targets as prompt text. */
 export function targetsText(p: Profile): string {
   return p.targets.map((t, i) => `${i + 1}. ${TARGET_LABEL[t.kind]}: ${t.roles.join(", ")} — starting ${month(t.startFrom)} to ${month(t.startTo)}${t.note ? ` (${t.note})` : ""}`).join("\n") || "(no targets set)";

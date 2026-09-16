@@ -95,6 +95,10 @@ export default async function SettingsPage() {
         </Card>
       </Section>
 
+      <Section title="Projects on GitHub" description="Repository links, one per line. The agent reads each one (description, stack, first and latest commit, contributors, README) when it drafts, so project entries carry real facts and dates. A link pasted into a change request is read the same way.">
+        <Card><textarea name="repos" defaultValue={(p.repos ?? []).join("\n")} rows={4} className={`${area} font-mono leading-6`} placeholder="https://github.com/you/project" /></Card>
+      </Section>
+
       <Section title="You">
         <Card className="grid gap-4 sm:grid-cols-2">
           <Field label="Name" name="name" defaultValue={p.name} />
@@ -102,6 +106,7 @@ export default async function SettingsPage() {
           <Field label="Phone" name="phone" defaultValue={p.phone} />
           <Field label="LinkedIn" name="linkedin" defaultValue={p.linkedin} />
           <Field label="Website" name="website" defaultValue={p.website} />
+          <Field label="GitHub username" name="github" defaultValue={p.github ?? ""} hint="So your own commits can be told apart in project facts." />
           <div className="sm:col-span-2"><Area label="Work rights" name="workRights" defaultValue={p.workRights} hint="Quoted to the eligibility gate. Visa class, hours cap, sponsorship needs." /></div>
           <div className="sm:col-span-2"><Area label="Availability" name="availability" defaultValue={p.availability} rows={2} hint="Start dates, hours, semester constraints. Goes into cover letters and forms." /></div>
           <div className="sm:col-span-2"><Area label="About you" name="notes" defaultValue={p.notes} rows={4} hint="Goals, what energises or drains you, constraints. Feeds the culture and career scores." /></div>

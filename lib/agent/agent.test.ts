@@ -134,6 +134,15 @@ test("GradConnection cards parse into candidates", async () => {
   assert.equal(c[1].company, "Acme");
 });
 
+test("GitHub links are found and briefs render without placeholders", async () => {
+  const { repoUrls, briefText } = await import("./github.ts");
+  assert.deepEqual(repoUrls("see https://github.com/Manukrish2504/Perch and (https://github.com/zeldaLabs/zeldaFlow) and https://github.com/Manukrish2504/Perch/issues"), ["https://github.com/Manukrish2504/Perch", "https://github.com/zeldaLabs/zeldaFlow"]);
+  const t = briefText({ url: "https://github.com/a/b", owner: "a", repo: "b", description: "Thing", homepage: "", topics: [], languages: ["Swift"], stars: 3, createdAt: "2026-08-24T00:00:00Z", firstCommit: "2026-08-24T00:00:00Z", lastCommit: "2026-09-01T00:00:00Z", commits: 40, contributors: [{ login: "Manukrish2504", contributions: 12 }, { login: "x", contributions: 28 }], readme: "" }, "manukrish2504");
+  assert.match(t, /Aug 2026 – Sep 2026/);
+  assert.match(t, /made 12 of 40 commits/);
+  assert.match(briefText({ url: "https://github.com/a/c", error: "repository not found or not public" }), /Do not invent/);
+});
+
 test("schedule and dedupe helpers", async () => {
   const { normUrl, jobKey } = await import("../types.ts");
   assert.equal(normUrl("https://www.linkedin.com/jobs/view/graduate-ai-engineer-at-acme-4455645312?refId=x"), "linkedin.com/jobs/view/4455645312");

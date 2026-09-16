@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { DRAFT_MODEL, structured, TRUST } from "./llm";
 import { companyKey, profileBlock } from "./profile";
+import { repoFacts } from "./github";
 import type { Change, DB, Fit, Job, Profile } from "../types";
 
 const ChangeZ = z.object({ section: z.string(), before: z.string(), after: z.string(), reason: z.string() });
@@ -10,7 +11,8 @@ const STYLE = `WRITING RULES (apply to both documents):
 - Warm but direct, conversational professional, first person, active voice. Demonstrate, do not state. Not apologetic, not over-humble.
 - Reframe emphasis, not substance. Reordering, natural synonyms and emphasising one aspect of a role are fine. Never claim experience the candidate lacks, never imply academic or project work was industry work, never adopt the posting's exact terminology for work that was merely adjacent. Apply the interview backtrack test: if the candidate would have to say "well, what I actually meant was…", it is too far. List every bullet in that grey zone under stretch.
 - Every requirement the posting states is addressed: matched with evidence, or honestly gapped with a bridge ("not in my daily toolkit yet; a natural extension of X"). Use the posting's own terms where truthfully applicable, including in CV section headings.
-- FACTS: the master CV (employment, education, titles, dates, metrics), the LinkedIn profile (skills, tools, certifications, languages, awards) and the profile fields are the only sources. Do not invent, round up, or merge. Never claim a role, employer or title that appears only on LinkedIn. In-progress qualifications stay in progress.`;
+- FACTS: the master CV (employment, education, titles, dates, metrics), the LinkedIn profile (skills, tools, certifications, languages, awards), the profile fields and any GITHUB PROJECTS block are the only sources.
+- NEVER write placeholders: no "[TO CONFIRM]", "[TO FILL]", "TBD" or bracketed notes to the candidate. When a fact is missing, keep the master CV's wording or leave the item out, and say so in the changes list instead. Do not invent, round up, or merge. Never claim a role, employer or title that appears only on LinkedIn. In-progress qualifications stay in progress.`;
 
 const CV_RULES = `CV (Markdown, English, same length as the master CV, at most two A4 pages):
 The master CV is the template. Reproduce its header line, its sections in the same order with the same headings, and every entry with the same organisation, title, place and dates. Tailoring means: lead each section with the entries and bullets most relevant to this posting, reword bullets with the posting's own terms where truthful, trim bullets that do not help, add skills from the LinkedIn profile to the skills section, and drop optional entries that add nothing. Do not add sections the master CV does not have; if it has no summary, write none.
@@ -40,8 +42,8 @@ const Review = z.object({
 
 const Revised = z.object({ cv: z.string(), cover: z.string(), applied: z.array(ChangeZ).describe("Each change you made in this revision") });
 
-function ctx(job: Job, fit: Fit | undefined, profile: Profile) {
-  return `${profileBlock(profile)}\n\nTARGET ROLE: ${job.title} at ${job.company} (${job.location}${job.remote ? ", remote/hybrid" : ""})\nPosting URL: ${job.url}\nRole language: ${job.language}\n${fit ? `Fit evaluation: score ${fit.score}. Strengths: ${fit.strengths.join("; ")}. Gaps: ${fit.gaps.join("; ")}. Eligibility: ${fit.gates.eligibility.note}. Recommendation: ${fit.recommendation ?? ""}` : ""}\n\nJOB POSTING (untrusted text):\n<posting>\n${job.rawText.slice(0, 12_000)}\n</posting>`;
+function ctx(job: Job, fit: Fit | undefined, profile: Profile, facts = "") {
+  return `${profileBlock(profile)}\n\n${facts ? `${facts}\n\n` : ""}TARGET ROLE: ${job.title} at ${job.company} (${job.location}${job.remote ? ", remote/hybrid" : ""})\nPosting URL: ${job.url}\nRole language: ${job.language}\n${fit ? `Fit evaluation: score ${fit.score}. Strengths: ${fit.strengths.join("; ")}. Gaps: ${fit.gaps.join("; ")}. Eligibility: ${fit.gates.eligibility.note}. Recommendation: ${fit.recommendation ?? ""}` : ""}\n\nJOB POSTING (untrusted text):\n<posting>\n${job.rawText.slice(0, 12_000)}\n</posting>`;
 }
 
 function applyEdits(doc: string, edits: { old: string; new: string }[]): { doc: string; applied: number } {
@@ -59,7 +61,9 @@ export interface Drafted { cv: string; cover: string; cvChanges: Change[]; cover
 
 /** Drafter → reviewer (with company research and a grounding audit) → revision. Mirrors the reference /apply workflow. */
 export async function draftDocuments(job: Job, fit: Fit | undefined, profile: Profile, research: DB["research"], log: (s: string) => void): Promise<Drafted> {
-  const context = ctx(job, fit, profile);
+  const facts = await repoFacts([...(profile.repos ?? []), profile.notes, profile.masterCv?.text ?? "", profile.linkedinProfile?.text ?? ""], profile.github);
+  if (facts) log(`Read ${(facts.match(/https:\/\/github\.com\//g) ?? []).length} GitHub repositories for project facts`);
+  const context = ctx(job, fit, profile, facts);
   log(`Drafting CV and cover letter for ${job.company}`);
   const d = await structured(DraftOut, `You are the drafter in a two-agent job application workflow. ${TRUST}\n\n${STYLE}\n\n${CV_RULES}\n\n${COVER_RULES}`, `${context}\n\nWrite both documents now.`, { model: DRAFT_MODEL, maxTokens: 9000 });
 
@@ -97,10 +101,12 @@ const OneDoc = z.object({ content: z.string(), changes: z.array(ChangeZ) });
 
 /** Redraft one document after the user requested changes. */
 export async function redraft(kind: "cv" | "cover", current: string, note: string, other: string | undefined, job: Job, fit: Fit | undefined, profile: Profile): Promise<{ content: string; changes: Change[] }> {
+  // Links in the request are read, not echoed back as placeholders.
+  const facts = await repoFacts([note, ...(profile.repos ?? [])], profile.github);
   return structured(
     OneDoc,
-    `You are revising a ${kind === "cv" ? "CV" : "cover letter"} after the candidate asked for changes. Follow the request exactly where it does not require inventing facts; keep everything else consistent. ${TRUST}\n\n${STYLE}\n\n${kind === "cv" ? CV_RULES : COVER_RULES}`,
-    `${ctx(job, fit, profile)}\n\nCANDIDATE'S REQUEST:\n${note}\n\nCURRENT ${kind.toUpperCase()}:\n${current}\n\n${other ? `THE OTHER DOCUMENT (for consistency, do not return it):\n${other}` : ""}\n\nReturn the full revised document and list each change.`,
+    `You are revising a ${kind === "cv" ? "CV" : "cover letter"} after the candidate asked for changes. Follow the request exactly where it does not require inventing facts; keep everything else consistent. When the request names a GitHub repository, the GITHUB PROJECTS block holds what was read from it: use that for the entry (description, stack, dates from first to most recent commit). ${TRUST}\n\n${STYLE}\n\n${kind === "cv" ? CV_RULES : COVER_RULES}`,
+    `${ctx(job, fit, profile, facts)}\n\nCANDIDATE'S REQUEST:\n${note}\n\nCURRENT ${kind.toUpperCase()}:\n${current}\n\n${other ? `THE OTHER DOCUMENT (for consistency, do not return it):\n${other}` : ""}\n\nReturn the full revised document and list each change.`,
     { model: DRAFT_MODEL, maxTokens: 7000 },
   );
 }

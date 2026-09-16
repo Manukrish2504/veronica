@@ -256,6 +256,8 @@ export async function saveProfile(formData: FormData) {
       phone: str("phone"),
       linkedin: str("linkedin"),
       website: str("website"),
+      github: str("github").replace(/^https?:\/\/github\.com\//, "").replace(/\/.*$/, ""),
+      repos: str("repos").split(/[\n,\s]+/).map((s) => s.trim()).filter((s) => /github\.com\//.test(s)),
       workRights: str("workRights"),
       availability: str("availability"),
       notes: str("notes"),
