@@ -1,0 +1,12 @@
+import { readFileSync } from "node:fs";
+import { redraft } from "./lib/agent/draft";
+const d = JSON.parse(readFileSync("data/users/dbc937d116b4df3f.json", "utf8"));
+const a = d.applications.find((x: { status: string }) => x.status === "review");
+const job = d.jobs.find((j: { id: string }) => j.id === a.jobId);
+const cv = d.drafts.find((x: { applicationId: string; kind: string }) => x.applicationId === a.id && x.kind === "cv");
+const t0 = Date.now();
+const r = await redraft("cv", cv.content, "No need of summary. Add my recent projects Perch https://github.com/Manukrish2504/Perch and ZeldaFlow (https://github.com/zeldaLabs/zeldaFlow) to the Projects section.", undefined, job, a.fit, d.profile);
+console.log("job:", job.company, "| ms", Date.now() - t0, "| placeholders:", /\[(TO|DATES|ONE-LINE)/.test(r.content) ? "YES" : "none", "| summary section:", /## summary/i.test(r.content) ? "still there" : "removed");
+const i = r.content.search(/## projects/i);
+console.log(r.content.slice(i, i + 1600));
+console.log("\nCHANGES:", r.changes.slice(0, 4).map((c) => `${c.section}: ${c.reason.slice(0, 120)}`).join("\n"));

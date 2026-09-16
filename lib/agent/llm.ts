@@ -99,9 +99,16 @@ const claude: Structured = async (schema, system, user, opts = {}) => {
   });
   for await (const m of q) {
     if (m.type !== "result") continue;
-    if (m.subtype === "success" && m.structured_output !== undefined) return schema.parse(m.structured_output);
+    if (m.subtype === "success") {
+      if (m.structured_output !== undefined) return schema.parse(m.structured_output);
+      // The model sometimes answers with the JSON in plain text instead of the structured-output channel.
+      const text = typeof m.result === "string" ? m.result : "";
+      const json = text.match(/\{[\s\S]*\}/)?.[0];
+      if (json) { try { return schema.parse(JSON.parse(json)); } catch {} }
+      throw new Error(`Claude Code finished without structured output${m.terminal_reason ? ` (${m.terminal_reason})` : ""}`);
+    }
     const detail = "errors" in m && Array.isArray(m.errors) && m.errors.length ? m.errors.join("; ") : m.subtype;
-    throw new Error(`Claude Code returned ${detail}`.slice(0, 300));
+    throw new Error(`Claude Code returned ${detail}${"terminal_reason" in m && m.terminal_reason ? ` (${m.terminal_reason})` : ""}`.slice(0, 300));
   }
   throw new Error("Claude Code produced no result");
 };
