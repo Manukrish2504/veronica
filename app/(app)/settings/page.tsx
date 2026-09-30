@@ -7,7 +7,7 @@ import { requireUser } from "@/lib/auth";
 import { saveProfile } from "@/lib/actions";
 import { SOURCES, TARGET_LABEL, type Target, type TargetKind } from "@/lib/types";
 import { fmtDate } from "@/lib/format";
-import { DRAFT_MODEL, MODEL, PROVIDER, authStatus, hasKey } from "@/lib/agent/llm";
+import { DRAFT_MODEL, MODEL, PROVIDER, authStatus, hasKey, hasGeminiKey } from "@/lib/agent/llm";
 
 const LEVELS = ["Native", "Fluent", "Professional", "Conversational", "Basic"];
 const SCHEDULES = [["hourly", "Every hour"], ["daily", "Daily at 09:00"], ["weekly", "Weekly"], ["manual", "Only when I ask"]] as const;
@@ -53,7 +53,7 @@ export default async function SettingsPage() {
   const user = await requireUser();
   const p = read(user.id).profile;
   const auth = PROVIDER === "claude" ? await authStatus() : undefined;
-  const authOk = PROVIDER === "api" ? hasKey() : auth?.loggedIn !== false;
+  const authOk = PROVIDER === "gemini" ? hasGeminiKey() : PROVIDER === "api" ? hasKey() : auth?.loggedIn !== false;
   const langs = [...p.languages, { name: "", level: "Professional" }];
   const targets: Target[] = [...p.targets, { kind: "internship", roles: [], startFrom: "", startTo: "", note: "" }];
   const watch = [...p.watchList, { company: "", careersUrl: "" }, { company: "", careersUrl: "" }];
@@ -194,9 +194,11 @@ export default async function SettingsPage() {
             <li className="flex items-center gap-3 py-2.5">
               <Icon name={authOk ? "check_circle" : "error"} size={18} filled className={authOk ? "text-[var(--domain-opportunity)]" : "text-destructive"} />
               <span className="flex-1">
-                <span className="font-medium">{PROVIDER === "claude" ? "Claude subscription (Claude Code login)" : "Anthropic API key"}</span>
+                <span className="font-medium">{PROVIDER === "gemini" ? "Gemini API key" : PROVIDER === "claude" ? "Claude subscription (Claude Code login)" : "Anthropic API key"}</span>
                 <span className="block text-[0.6875rem] text-muted-foreground">
-                  {PROVIDER === "claude"
+                  {PROVIDER === "gemini"
+                    ? hasGeminiKey() ? "Found in the environment. Set VERONICA_LLM=api or remove it to switch provider." : "Missing. Add GEMINI_API_KEY=… to .env.local and restart the server."
+                    : PROVIDER === "claude"
                     ? auth === undefined ? "Uses the account you are logged into with the claude CLI. Could not probe it (claude not on PATH); errors will show on the job if the login is missing." : auth.loggedIn ? `Logged in via ${auth.method ?? "claude.ai"}. Set VERONICA_LLM=api in .env.local to use an API key instead.` : "Not logged in. Run `claude` in a terminal and sign in, then restart the server."
                     : hasKey() ? "Found in the environment. Remove VERONICA_LLM=api to use your Claude login instead." : "Missing. Add ANTHROPIC_API_KEY=… to .env.local and restart the server, or remove VERONICA_LLM=api to use your Claude login."}
                 </span>
